@@ -1,6 +1,12 @@
 name: iOS starter workflow
 
 on:
+  workflow_dispatch:
+    inputs:
+      debug_tmate:
+        description: "Start interactive tmate session instead of build/test"
+        type: boolean
+        default: true
   push:
     branches: [ "main" ]
   pull_request:
@@ -10,17 +16,28 @@ jobs:
   build:
     name: Build and Test default scheme using any available iPhone simulator
     runs-on: macos-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+      - name: Interactive macOS terminal (tmate)
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.debug_tmate }}
+        uses: mxschmitt/action-tmate@v3
+        with:
+          limit-access-to-actor: true
+
       - name: Set Default Scheme
+        if: ${{ github.event_name != 'workflow_dispatch' || !inputs.debug_tmate }}
         run: |
           scheme_list=$(xcodebuild -list -json | tr -d "\n")
           default=$(echo $scheme_list | ruby -e "require 'json'; puts JSON.parse(STDIN.gets)['project']['targets'][0]")
           echo $default | cat >default
           echo Using default scheme: $default
       - name: Build
+        if: ${{ github.event_name != 'workflow_dispatch' || !inputs.debug_tmate }}
         env:
           scheme: ${{ 'default' }}
           platform: ${{ 'iOS Simulator' }}
@@ -32,6 +49,7 @@ jobs:
           file_to_build=`echo $file_to_build | awk '{$1=$1;print}'`
           xcodebuild build-for-testing -scheme "$scheme" -"$filetype_parameter" "$file_to_build" -destination "platform=$platform,name=$device"
       - name: Test
+        if: ${{ github.event_name != 'workflow_dispatch' || !inputs.debug_tmate }}
         env:
           scheme: ${{ 'default' }}
           platform: ${{ 'iOS Simulator' }}
